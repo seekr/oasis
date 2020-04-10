@@ -50,51 +50,32 @@
 }
 
 * {
-  scrollbar-color: var(--fg-status) var(--bg);
+  scrollbar-color: var(--fg-status) #FFF;
 }
 
 ::selection {
-  background-color: var(--bg-selection);
-  color: var(--fg-light);
+  background-color: #FF0;
+  color: #000;
 }
 
 html {
-  display: flex;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
     "Helvetica Neue", sans-serif;
-  justify-content: center;
-  font-size: 12pt;
-  line-height: 1.5;
-  margin: 0;
-  padding: 0;
-  overflow-y: scroll;
+    box-sizing: border-box;
+    line-height: 18.4px;
+}
+
+body {
+  font-size: 16px;
+  background-color: #FAFAFA;
 }
 
 main {
   margin: 0;
-  margin-bottom: var(--whole);
+  margin-bottom: 1rem;
+  padding: 0 1rem;
 }
-
-/* https://www.desmos.com/calculator/3elcf5cwhn */
-h1 {
-  font-size: 133%;
-} /*     4 / 3 */
-h2 {
-  font-size: 115%;
-} /*     8 / 7 */
-h3 {
-  font-size: 105%;
-} /*   16 / 15 */
-h4 {
-  font-size: 103%;
-} /*   32 / 31 */
-h5 {
-  font-size: 101%;
-} /*   64 / 63 */
-h6 {
-  font-size: 100%;
-} /* 128 / 127 */
 
 h1,
 h2,
@@ -102,32 +83,22 @@ h3,
 h4,
 h5,
 h6 {
-  color: var(--bg-light);
-  margin: var(--whole) 0;
+  color: #000;
+  margin: 1rem 0;
 }
 
 ul,
 ol {
-  padding-left: var(--whole);
-  margin-left: var(--nano);
+  padding-left: 1rem;
+  margin-left: 0.125rem;
 }
 
 a {
-  color: var(--fg-light);
-}
-
-button {
-  cursor: pointer;
-  background: var(--fg);
-  color: var(--bg);
-  border: var(--pico) solid var(--fg);
-  padding: var(--milli) var(--whole);
-  border-radius: var(--common-radius);
+  color: #000;
 }
 
 section header a {
   display: flex;
-  color: var(--fg-status);
   text-decoration: none;
   font-weight: bold;
   margin-right: var(--micro);
@@ -136,7 +107,6 @@ section header a {
 
 section > footer > div > a,
 section > footer > div > form > button {
-  color: var(--fg-status);
   font-weight: bold;
 }
 
@@ -148,58 +118,45 @@ section > footer > div > form > button {
   padding: 0;
 }
 
-select,
-input {
-  background: var(--bg);
-  color: var(--fg);
-  border: var(--pico) solid var(--bg-selection);
-  padding: var(--milli);
-  margin: var(--whole) 0;
-  -moz-appearance: none;
-  appearance: none;
-  border-radius: var(--common-radius);
-  display: block;
-}
-
 .contentWarning {
-  background-color: var(--bg);
+  background-color: #EEE;
   box-sizing: border-box;
   display: block;
-  font-size: var(--whole);
-  padding: var(--whole);
+  font-size: 1rem;
+  padding: 1rem;
   width: 100%;
-  margin: var(--whole) 0;
-  border: var(--pico) solid var(--bg-selection);
-  border-radius: var(--common-radius);
-  color: var(--fg);
+  margin: 1rem 0;
+  border: 1px dotted black;
+  border-radius: 0.25rem;
+  color: black;
 }
 
 textarea {
-  background-color: var(--bg);
+  background-color: #EEE;
   box-sizing: border-box;
   display: block;
-  font-size: var(--whole);
-  padding: var(--whole);
+  font-size: 1rem;
+  padding: 1rem;
   resize: vertical;
   width: 100%;
-  margin: var(--whole) 0;
+  margin: 1rem 0;
   height: 12rem;
-  border: var(--pico) solid var(--bg-selection);
-  border-radius: var(--common-radius);
-  color: var(--fg);
+  border: 1px dotted black;
+  border-radius: 0.25rem;
+  color: black;
 }
 
 button:focus,
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--blue);
+  border: 1px dotted black;
 }
 
 /* Prevent button styles being applied to heart button */
 button:focus,
 button:hover {
-  background-color: var(--fg-light);
+  background-color: #000;
 }
 
 section > div > footer > form > button:hover,
@@ -209,11 +166,11 @@ section > div > footer > form > button:focus {
 
 pre {
   overflow-x: auto;
-  background-color: var(--bg);
+  background-color: black;
   padding: var(--milli);
   font-size: 92%;
-  border-radius: var(--common-radius);
-  border: var(--pico) solid var(--bg-status);
+  border-radius: 0.25rem;
+  border: 1px dotted black;
 }
 
 section code {
@@ -222,13 +179,13 @@ section code {
   padding: 0.125em 0.25em;
   margin: 0;
   font-size: var(--code-size);
-  background-color: var(--bg);
-  border-radius: var(--common-radius);
+  background-color: #FFF;
+  border-radius: 0.25rem;
   border: var(--pico) solid var(--bg-status);
 }
 
 section pre code {
-  color: inherit;
+  color: white;
   padding: 0;
   margin: 0;
   font-size: 100%;
@@ -239,15 +196,15 @@ section pre code {
 
 section blockquote {
   margin-left: 0;
-  border-left: var(--milli) solid var(--bg-status);
-  padding-left: var(--whole);
+  border-left: 0.5rem double black;
+  padding-left: 1rem;
 }
 
 section img,
 section video {
   max-width: 100%;
   max-height: 100vh;
-  border-radius: var(--common-radius);
+  border-radius: 0.25rem;
   box-sizing: border-box;
 }
 
@@ -269,8 +226,8 @@ section > header.profile {
 .profile > img {
   width: 4rem;
   height: 4rem;
-  margin-right: var(--whole);
-  border-radius: var(--common-radius);
+  margin-right: 1rem;
+  border-radius: 0.25rem;
 }
 
 .private {
@@ -297,8 +254,6 @@ section audio {
 @media screen {
   html {
     min-height: 100%;
-    color: var(--fg);
-    background-color: var(--bg-status);
   }
 
   body {
@@ -308,33 +263,23 @@ section audio {
   }
 }
 
-nav {
-  margin: var(--whole) 0;
-}
-
-nav > ul > li > a {
-  color: var(--fg);
-  text-decoration: none;
-  font-weight: bold;
-}
-
-nav > ul > li > a.current {
-  text-decoration: underline;
-}
-
 section {
-  padding: var(--whole);
-  border-radius: var(--common-radius);
-  margin: var(--whole) 0;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  margin: 1rem 0;
   word-wrap: break-word;
-  background: var(--bg);
+  border: 1px solid black;
   width: 100%;
   box-sizing: border-box;
+  background-color: white;
+}
+section:first-child {
+  border: none;
+  background-color: transparent;
 }
 
 section > header {
-  background: var(--bg);
-  color: var(--fg-status);
+  background: #FFF;
   height: var(--line);
   margin-bottom: calc(-1 * var(--milli));
   margin-top: calc(-1 * var(--milli));
@@ -352,7 +297,7 @@ section > header > div {
 section header a > .avatar {
   width: var(--line);
   height: var(--line);
-  border-radius: var(--common-radius);
+  border-radius: 0.25rem;
   margin-right: var(--micro);
 }
 
@@ -361,7 +306,7 @@ section header span {
 }
 section header .author > a:first-child {
   margin-left: 0;
-  color: var(--fg-light);
+  color: #000;
 }
 
 /*
@@ -410,27 +355,9 @@ section > footer > div > form > button.liked {
   color: var(--red);
 }
 
-label {
-  display: block;
-  margin: 0;
-}
-
-nav > ul {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  margin: 0;
-  padding: 0;
-}
-
-nav > ul > li {
-  list-style: none;
-  margin-right: var(--milli);
-}
-
 .profile {
   display: flex;
-  margin-bottom: var(--whole);
+  margin-bottom: 1rem;
 }
 
 progress {
@@ -447,10 +374,10 @@ progress {
 
 summary {
   padding: var(--milli);
-  margin-top: var(--whole);
+  margin-top: 1rem;
   cursor: pointer;
-  background: var(--bg);
-  border-radius: var(--common-radius);
+  background: #FFF;
+  border-radius: 0.25rem;
   list-style-type: "+ ";
 }
 
@@ -485,7 +412,7 @@ th {
 
 input[type="search"] {
   width: 100%;
-  margin: var(--whole) 0;
+  margin: 1rem 0;
 }
 
 hr {
@@ -495,21 +422,11 @@ hr {
 .form-button-group {
   display: flex;
   justify-content: space-between;
-  margin: var(--whole) 0;
+  margin: 1rem 0;
 }
 
 /* sidebar only appears on big screens */
 @media (min-width: calc(45rem)) {
-  body > nav > ul {
-    justify-content: right;
-    flex-direction: column;
-    margin-right: var(--kilo);
-    position: sticky;
-    top: var(--whole);
-  }
-  body > nav > ul > li {
-    margin-bottom: var(--whole);
-  }
   main {
     width: 100%;
     max-width: var(--measure);
@@ -540,8 +457,8 @@ hr {
 
 .theme-preview {
   width: calc(100% / 15);
-  height: var(--whole);
-  margin-top: var(--whole);
+  height: 1rem;
+  margin-top: 1rem;
   display: inline-block;
 }
 
@@ -592,4 +509,54 @@ hr {
 }
 .theme-preview-0F {
   background-color: var(--base0F);
+}
+
+/* This */
+
+input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  appearance: none;
+  position: fixed;
+}
+
+label {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  width: 15px;
+  height: 10px;
+  margin: 40px;
+}
+
+label span {
+  display: block;
+  width: 100%;
+  background: hotpink;
+  height: 2px;
+  transition: transform 1s;
+}
+
+label span::before,
+label span::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: block;
+  height: 2px;
+  background: hotpink;
+  transition: 0.4s
+}
+
+label span::before {
+  top: 0;
+}
+
+label span::after {
+  top: calc(100% - 2px); /* to make the transition easier :) */
 }

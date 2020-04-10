@@ -80,6 +80,7 @@ const template = (...elements) => {
     { lang: "en" },
     head(
       title("Oasis"),
+      //link({ rel: "stylesheet", href: "https://unpkg.com/tachyons@4.7.0/css/tachyons.min.css" }),
       link({ rel: "stylesheet", href: "/theme.css" }),
       link({ rel: "stylesheet", href: "/assets/style.css" }),
       link({ rel: "stylesheet", href: "/assets/highlight.css" }),
@@ -96,6 +97,8 @@ const template = (...elements) => {
     ),
     body(
       nav(
+        input({type: "checkbox", id: "trigger"}),
+        label({for: "trigger"}),
         ul(
           navLink({
             href: "/publish",
