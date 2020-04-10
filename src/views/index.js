@@ -828,7 +828,7 @@ exports.publishView = () => {
   const publishForm = "/publish/";
 
   return template(
-    section(
+    section({class: "descrip"},
       h1(i18n.publish),
       form(
         { action: publishForm, method: "post" },

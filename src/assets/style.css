@@ -1,57 +1,4 @@
-:root {
-  /*
-   * according to https://www.color-blindness.com/color-name-hue/
-   *
-   * amber
-   * chartreuse
-   * free-speech-green (lime)
-   * aqua
-   * blue
-   * electric-indigo
-   * hot-magenta
-   */
-  --red: var(--base08);
-  --orange: var(--base09);
-  --yellow: var(--base0A);
-  --green: var(--base0B);
-  --cyan: var(--base0C);
-  --blue: var(--base0D);
-  --violet: var(--base0E);
-  --magenta: var(--base0F);
 
-  /* convenience */
-  --bg: var(--base00);
-  --bg-status: var(--base01);
-  --bg-selection: var(--base02);
-  --fg-alt: var(--base03);
-  --fg-status: var(--base04);
-  --fg: var(--base05);
-  --fg-light: var(--base06);
-  --bg-light: var(--base07);
-
-  /* line */
-
-  --peta: 32rem;
-  --tera: 16rem;
-  --giga: 8rem;
-  --mega: 4rem;
-  --kilo: 2rem;
-  --whole: 1rem;
-  --milli: 0.5rem;
-  --micro: 0.25rem;
-  --nano: 0.125rem;
-  --pico: 0.0625rem;
-
-  /* size */
-  --common-radius: var(--micro);
-  --measure: calc(var(--peta) + var(--mega));
-  --line: 1.5rem;
-  --code-size: 85%;
-}
-
-* {
-  scrollbar-color: var(--fg-status) #FFF;
-}
 
 ::selection {
   background-color: #FF0;
@@ -97,12 +44,53 @@ a {
   color: #000;
 }
 
+section {
+  padding: 1rem;
+  border-radius: 0.25rem;
+  margin: 1rem 0;
+  word-wrap: break-word;
+  width: 100%;
+  box-sizing: border-box;
+}
+section.post {
+  background-color: white;
+  border: 1px solid black;
+}
+
+section > header {
+  background: #FFF;
+  height: 40px;
+  margin-bottom: calc(-1 * 10px);
+  margin-top: calc(-1 * 10px);
+  padding: 10px 0;
+  position: sticky;
+  top: 0;
+}
+
+section > header > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+section header a > .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 0.25rem;
+  margin-right: 10px;
+}
+
+section header span {
+  display: inline-flex;
+}
+section header .author > a:first-child {
+  margin-left: 0;
+  color: #000;
+}
+
 section header a {
   display: flex;
   text-decoration: none;
   font-weight: bold;
-  margin-right: var(--micro);
-  margin-left: var(--micro);
 }
 
 section > footer > div > a,
@@ -261,52 +249,6 @@ section audio {
     max-width: var(--measure);
     margin: 0;
   }
-}
-
-section {
-  padding: 1rem;
-  border-radius: 0.25rem;
-  margin: 1rem 0;
-  word-wrap: break-word;
-  border: 1px solid black;
-  width: 100%;
-  box-sizing: border-box;
-  background-color: white;
-}
-section:first-child {
-  border: none;
-  background-color: transparent;
-}
-
-section > header {
-  background: #FFF;
-  height: var(--line);
-  margin-bottom: calc(-1 * var(--milli));
-  margin-top: calc(-1 * var(--milli));
-  padding-bottom: var(--milli);
-  padding-top: var(--milli);
-  position: sticky;
-  top: 0;
-}
-
-section > header > div {
-  display: flex;
-  justify-content: space-between;
-}
-
-section header a > .avatar {
-  width: var(--line);
-  height: var(--line);
-  border-radius: 0.25rem;
-  margin-right: var(--micro);
-}
-
-section header span {
-  display: inline-flex;
-}
-section header .author > a:first-child {
-  margin-left: 0;
-  color: #000;
 }
 
 /*
@@ -513,7 +455,7 @@ hr {
 
 /* This */
 
-input {
+nav input {
   opacity: 0;
   width: 0;
   height: 0;
@@ -521,7 +463,7 @@ input {
   position: fixed;
 }
 
-label {
+nav label {
   position: fixed;
   top: 0;
   right: 0;
@@ -533,7 +475,7 @@ label {
   margin: 40px;
 }
 
-label span {
+nav label span {
   display: block;
   width: 100%;
   background: hotpink;
@@ -541,7 +483,7 @@ label span {
   transition: transform 1s;
 }
 
-label span::before,
+nav label span::before,
 label span::after {
   content: "";
   position: absolute;
@@ -553,10 +495,45 @@ label span::after {
   transition: 0.4s
 }
 
-label span::before {
+nav label span::before {
   top: 0;
 }
 
-label span::after {
+nav label span::after {
   top: calc(100% - 2px); /* to make the transition easier :) */
 }
+
+nav ul {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  transform: translateX(90vw);
+  transition: transform 0.2s;
+  background: white;
+  z-index: 999;
+}
+
+nav > ul > li {
+  list-style: none;
+}
+
+nav input:checked + label span {
+  transform: rotate(45deg);
+}
+
+nav input:checked + label span::before, input:checked + label span::after {
+  top: calc(50% - 1px);
+  transition: 0.4s;
+}
+nav input:checked + label span::after {
+  transform: rotate(90deg);
+}
+
+nav input:checked ~ ul {
+  transform: none;
+  transition: transform 0.4s; 
+}
+
+
