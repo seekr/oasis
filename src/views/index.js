@@ -472,6 +472,20 @@ const post = ({ msg, aside = false }) => {
 
   const likeCount = msg.value.meta.votes.length;
 
+  const maxLikedNameLength = 16;
+  const maxLikedNames = 16;
+
+  const likedByNames = msg.value.meta.votes
+    .slice(0, maxLikedNames)
+    .map((name) => name.slice(0, maxLikedNameLength))
+    .join(", ");
+
+  const additionalLikesMessage =
+    likeCount > maxLikedNames ? `+${likeCount - maxLikedNames} more` : ``;
+
+  const likedByMessage =
+    likeCount > 0 ? `Liked by ${likedByNames} ${additionalLikesMessage}` : null;
+
   const messageClasses = ["post"];
 
   if (isPrivate) {
@@ -561,6 +575,7 @@ const post = ({ msg, aside = false }) => {
               type: "submit",
               value: likeButton.value,
               class: likeButton.class,
+              title: likedByMessage,
             },
             `❤ ${likeCount}`
           )
@@ -618,6 +633,9 @@ exports.editProfileView = ({ name, description }) =>
     )
   );
 
+/**
+ * @param {{avatarUrl: string, description: string, feedId: string, messages: any[], name: string, relationship: object}} input
+ */
 exports.authorView = ({
   avatarUrl,
   description,
@@ -629,32 +647,37 @@ exports.authorView = ({
   const mention = `[@${name}](${feedId})`;
   const markdownMention = highlightJs.highlight("markdown", mention).value;
 
-  const areFollowing =
-    relationship !== null &&
-    relationship.following === true &&
-    relationship.blocking === false;
+  const contactForms = [];
 
-  const contactFormType = areFollowing ? "unfollow" : "follow";
-  const contactFormTypeLabel = i18n[contactFormType];
-
-  const contactForm =
-    relationship === null
-      ? null // We're on our own profile!
-      : form(
+  const addForm = ({ action }) =>
+    contactForms.push(
+      form(
+        {
+          action: `/${action}/${encodeURIComponent(feedId)}`,
+          method: "post",
+        },
+        button(
           {
-            action: `/${contactFormType}/${encodeURIComponent(feedId)}`,
-            method: "post",
+            type: "submit",
           },
-          button(
-            {
-              type: "submit",
-            },
-            contactFormTypeLabel
-          )
-        );
+          i18n[action]
+        )
+      )
+    );
+
+  if (relationship.me === false) {
+    if (relationship.following) {
+      addForm({ action: "unfollow" });
+    } else if (relationship.blocking) {
+      addForm({ action: "unblock" });
+    } else {
+      addForm({ action: "follow" });
+      addForm({ action: "block" });
+    }
+  }
 
   const relationshipText = (() => {
-    if (relationship === null) {
+    if (relationship.me === true) {
       return i18n.relationshipYou;
     } else if (
       relationship.following === true &&
@@ -697,8 +720,8 @@ exports.authorView = ({
       div(
         a({ href: `/likes/${encodeURIComponent(feedId)}` }, i18n.viewLikes),
         span(nbsp, relationshipText),
-        contactForm,
-        relationship === null
+        ...contactForms,
+        relationship.me
           ? a({ href: `/profile/edit` }, nbsp, i18n.editProfile)
           : null
       ),
@@ -962,10 +985,12 @@ exports.settingsView = ({ status, peers, theme, themeNames, version }) => {
       form(
         { action: "/language", method: "post" },
         select({ name: "language" }, [
+          /* cspell:disable */
           languageOption("en", "English"),
           languageOption("es", "Español"),
-          /* cspell:disable-next-line */
+          languageOption("it", "Italiano"),
           languageOption("de", "Deutsch"),
+          /* cspell:enable */
         ]),
         button({ type: "submit" }, i18n.setLanguage)
       ),
