@@ -1,8 +1,6 @@
-
-
 ::selection {
-  background-color: #FF0;
-  color: #000;
+  background-color: yellow;
+  color: black;
 }
 
 html {
@@ -24,26 +22,57 @@ main {
   padding: 0 1rem;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  color: #000;
+pre {
+  overflow-x: auto;
+  background-color: black;
+  padding: var(--milli);
+  font-size: 92%;
+  border-radius: 0.25rem;
+  border: 1px dotted black;
+}
+
+.contentWarning {
+  background-color: #EEE;
+  box-sizing: border-box;
+  display: block;
+  font-size: 1rem;
+  padding: 1rem;
+  width: 100%;
   margin: 1rem 0;
+  border: 1px dotted black;
+  border-radius: 0.25rem;
+  color: black;
 }
 
-ul,
-ol {
-  padding-left: 1rem;
-  margin-left: 0.125rem;
+textarea {
+  background-color: #EEE;
+  box-sizing: border-box;
+  display: block;
+  font-size: 1rem;
+  padding: 1rem;
+  resize: vertical;
+  width: 100%;
+  margin: 1rem 0;
+  height: 12rem;
+  border: 1px dotted black;
+  border-radius: 0.25rem;
+  color: black;
 }
 
-a {
-  color: #000;
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border: 1px dotted black;
 }
 
+/* Prevent button styles being applied to heart button */
+button:focus,
+button:hover {
+  background-color: #000;
+}
+
+/* section styles */
 section {
   padding: 1rem;
   border-radius: 0.25rem;
@@ -106,59 +135,9 @@ section > footer > div > form > button {
   padding: 0;
 }
 
-.contentWarning {
-  background-color: #EEE;
-  box-sizing: border-box;
-  display: block;
-  font-size: 1rem;
-  padding: 1rem;
-  width: 100%;
-  margin: 1rem 0;
-  border: 1px dotted black;
-  border-radius: 0.25rem;
-  color: black;
-}
-
-textarea {
-  background-color: #EEE;
-  box-sizing: border-box;
-  display: block;
-  font-size: 1rem;
-  padding: 1rem;
-  resize: vertical;
-  width: 100%;
-  margin: 1rem 0;
-  height: 12rem;
-  border: 1px dotted black;
-  border-radius: 0.25rem;
-  color: black;
-}
-
-button:focus,
-input:focus,
-select:focus,
-textarea:focus {
-  border: 1px dotted black;
-}
-
-/* Prevent button styles being applied to heart button */
-button:focus,
-button:hover {
-  background-color: #000;
-}
-
 section > div > footer > form > button:hover,
 section > div > footer > form > button:focus {
   background-color: transparent;
-}
-
-pre {
-  overflow-x: auto;
-  background-color: black;
-  padding: var(--milli);
-  font-size: 92%;
-  border-radius: 0.25rem;
-  border: 1px dotted black;
 }
 
 section code {
@@ -200,6 +179,7 @@ section > h1 {
   margin-top: 0;
   padding-top: 0;
 }
+/* END of section */
 
 .profile > img,
 .profile > h1 {
@@ -336,29 +316,9 @@ details[open] > summary {
   font-size: 50%;
 }
 
-table {
-  width: 100%;
-  table-layout: fixed;
-}
-
-td,
-th {
-  padding: var(--milli);
-  outline: var(--pico) solid var(--bg-status);
-}
-
-th {
-  text-align: left;
-  background-color: var(--bg-status);
-}
-
 input[type="search"] {
   width: 100%;
   margin: 1rem 0;
-}
-
-hr {
-  border: var(--pico) solid var(--fg-alt);
 }
 
 .form-button-group {
@@ -371,7 +331,6 @@ hr {
 @media (min-width: calc(45rem)) {
   main {
     width: 100%;
-    max-width: var(--measure);
   }
   body {
     display: flex;
@@ -379,161 +338,3 @@ hr {
     max-width: none;
   }
 }
-
-/* Use the browser's default font rendering instead of using our fancy
- * font-family above. This resolves a problem where some emoji were being
- * rendered in the system-ui font, which is rarely what we want.
- */
-.emoji {
-  font-family: initial;
-}
-
-/* This indent is used on the summaries page to create an indent of 1. It might
- * be wise to nest these recursively on the thread view, which would make it so
- * that we don't need any inline CSS anymore.
- */
-.indent {
-  padding-left: 1rem;
-  border-left: var(--micro) solid var(--bg-selection);
-}
-
-.theme-preview {
-  width: calc(100% / 15);
-  height: 1rem;
-  margin-top: 1rem;
-  display: inline-block;
-}
-
-.theme-preview-00 {
-  background-color: var(--base00);
-}
-.theme-preview-01 {
-  background-color: var(--base01);
-}
-.theme-preview-02 {
-  background-color: var(--base02);
-}
-.theme-preview-03 {
-  background-color: var(--base03);
-}
-.theme-preview-04 {
-  background-color: var(--base04);
-}
-.theme-preview-05 {
-  background-color: var(--base05);
-}
-.theme-preview-06 {
-  background-color: var(--base06);
-}
-.theme-preview-07 {
-  background-color: var(--base07);
-}
-.theme-preview-08 {
-  background-color: var(--base08);
-}
-.theme-preview-09 {
-  background-color: var(--base09);
-}
-.theme-preview-0A {
-  background-color: var(--base0A);
-}
-.theme-preview-0B {
-  background-color: var(--base0B);
-}
-.theme-preview-0C {
-  background-color: var(--base0C);
-}
-.theme-preview-0D {
-  background-color: var(--base0D);
-}
-.theme-preview-0E {
-  background-color: var(--base0E);
-}
-.theme-preview-0F {
-  background-color: var(--base0F);
-}
-
-/* This */
-
-nav input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  appearance: none;
-  position: fixed;
-}
-
-nav label {
-  position: fixed;
-  top: 0;
-  right: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  width: 15px;
-  height: 10px;
-  margin: 40px;
-}
-
-nav label span {
-  display: block;
-  width: 100%;
-  background: hotpink;
-  height: 2px;
-  transition: transform 1s;
-}
-
-nav label span::before,
-label span::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  display: block;
-  height: 2px;
-  background: hotpink;
-  transition: 0.4s
-}
-
-nav label span::before {
-  top: 0;
-}
-
-nav label span::after {
-  top: calc(100% - 2px); /* to make the transition easier :) */
-}
-
-nav ul {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  transform: translateX(90vw);
-  transition: transform 0.2s;
-  background: white;
-  z-index: 999;
-}
-
-nav > ul > li {
-  list-style: none;
-}
-
-nav input:checked + label span {
-  transform: rotate(45deg);
-}
-
-nav input:checked + label span::before, input:checked + label span::after {
-  top: calc(50% - 1px);
-  transition: 0.4s;
-}
-nav input:checked + label span::after {
-  transform: rotate(90deg);
-}
-
-nav input:checked ~ ul {
-  transform: none;
-  transition: transform 0.4s; 
-}
-
-

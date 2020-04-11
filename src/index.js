@@ -119,7 +119,7 @@ process.argv = [];
 const http = require("./http");
 
 const koaBody = require("koa-body");
-const { nav, ul, li, a } = require("hyperaxe");
+const { nav, div, ul, li, a } = require("hyperaxe");
 const open = require("open");
 const pull = require("pull-stream");
 const requireStyle = require("require-style");
@@ -235,7 +235,7 @@ router
         );
       };
 
-      const prefix = nav(
+      const prefix = div(
         ul(option("Day"), option("Week"), option("Month"), option("Year"))
       );
 
