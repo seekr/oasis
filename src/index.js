@@ -7,6 +7,7 @@ const path = require("path");
 const envPaths = require("env-paths");
 const cli = require("./cli");
 const fs = require("fs");
+const exif = require("piexifjs");
 
 const defaultConfig = {};
 const defaultConfigFile = path.join(
@@ -35,6 +36,24 @@ if (config.debug) {
   process.env.DEBUG = "oasis,oasis:*";
 }
 
+const customStyleFile = path.join(
+  envPaths("oasis", { suffix: "" }).config,
+  "/custom-style.css"
+);
+let haveCustomStyle;
+
+try {
+  fs.readFileSync(customStyleFile, "utf8");
+  haveCustomStyle = true;
+} catch (e) {
+  if (e.code === "ENOENT") {
+    haveCustomStyle = false;
+  } else {
+    console.log(`There was a problem loading ${customStyleFile}`);
+    throw e;
+  }
+}
+
 const nodeHttp = require("http");
 const debug = require("debug")("oasis");
 
@@ -60,13 +79,17 @@ if (haveConfig) {
   );
 }
 
+if (!haveCustomStyle) {
+  log(
+    `No custom style file found at ${customStyleFile}, ignoring this stylesheet.`
+  );
+}
+
 debug("Current configuration: %O", config);
 debug(`You can save the above to ${defaultConfigFile} to make \
 these settings the default. See the readme for details.`);
 
 const oasisCheckPath = "/.well-known/oasis";
-
-let isClosingAfterTest = false;
 
 process.on("uncaughtException", function (err) {
   // This isn't `err.code` because TypeScript doesn't like that.
@@ -105,11 +128,6 @@ Alternatively, you can set the default port in ${defaultConfigFile} with:
         }
       });
     });
-  } else if (
-    isClosingAfterTest &&
-    err["message"] === "TypeError: Cannot read property 'set' of null"
-  ) {
-    // We're closing during a test. Ignore.
   } else {
     throw err;
   }
@@ -150,8 +168,200 @@ const { about, blob, friend, meta, post, vote } = require("./models")({
   isPublic: config.public,
 });
 
+const nameWarmup = about._startNameWarmup();
+
+// enhance the users' input text by expanding @name to [@name](@feedPub.key)
+// and slurps up blob uploads and appends a markdown link for it to the text (see handleBlobUpload)
+const preparePreview = async function (ctx) {
+  let text = String(ctx.request.body.text);
+
+  // find all the @mentions that are not inside a link already
+  // stores name:[matches...]
+  // TODO: sort by relationship
+  const mentions = {};
+
+  // This matches for @string followed by a space or other punctuations like ! , or .
+  // The idea here is to match a plain @name but not [@name](...)
+  // also: re.exec has state => regex is consumed and thus needs to be re-instantiated for each call
+  //
+  // Change this link when the regex changes: https://regex101.com/r/j5rzSv/2
+  const rex = /(^|\s)(?!\[)@([a-zA-Z0-9-]+)([\s.,!?)~]{1}|$)/g;
+  //                                        ^ sentence ^
+  //                                         delimiters
+
+  // find @mentions using rex and use about.named() to get the info for them
+  let m;
+  while ((m = rex.exec(text)) !== null) {
+    const name = m[2];
+    let matches = about.named(name);
+    for (const feed of matches) {
+      let found = mentions[name] || [];
+      found.push(feed);
+      mentions[name] = found;
+    }
+  }
+
+  // filter the matches depending on the follow relation
+  Object.keys(mentions).forEach((name) => {
+    let matches = mentions[name];
+    // if we find mention matches for a name, and we follow them / they follow us,
+    // then use those matches as suggestions
+    const meaningfulMatches = matches.filter((m) => {
+      return (m.rel.followsMe || m.rel.following) && m.rel.blocking === false;
+    });
+    if (meaningfulMatches.length > 0) {
+      matches = meaningfulMatches;
+    }
+    mentions[name] = matches;
+  });
+
+  // replace the text with a markdown link if we have unambiguous match
+  const replacer = (match, name, sign) => {
+    let matches = mentions[name];
+    if (matches && matches.length === 1) {
+      // we found an exact match, don't send it to frontend as a suggestion
+      delete mentions[name];
+      // format markdown link and put the correct sign back at the end
+      return `[@${matches[0].name}](${matches[0].feed})${sign ? sign : ""}`;
+    }
+    return match;
+  };
+  text = text.replace(rex, replacer);
+
+  // add blob new blob to the end of the document.
+  text += await handleBlobUpload(ctx);
+
+  // author metadata for the preview-post
+  const ssb = await cooler.open();
+  const authorMeta = {
+    id: ssb.id,
+    name: await about.name(ssb.id),
+    image: await about.image(ssb.id),
+  };
+
+  return { authorMeta, text, mentions };
+};
+
+// handleBlobUpload ingests an uploaded form file.
+// it takes care of maximum blob size (5meg), exif stripping and mime detection.
+// finally it returns the correct markdown link for the blob depending on the mime-type.
+// it supports plain, image and also audio: and video: as understood by ssbMarkdown.
+const handleBlobUpload = async function (ctx) {
+  if (!ctx.request.files) return "";
+
+  const ssb = await cooler.open();
+  const blobUpload = ctx.request.files.blob;
+  if (typeof blobUpload === "undefined") {
+    return "";
+  }
+
+  let data = await fs.promises.readFile(blobUpload.path);
+  if (data.length == 0) {
+    return "";
+  }
+
+  // 5 MiB check
+  const mebibyte = Math.pow(2, 20);
+  const maxSize = 5 * mebibyte;
+  if (data.length > maxSize) {
+    throw new Error("Blob file is too big, maximum size is 5 mebibytes");
+  }
+
+  try {
+    const removeExif = (fileData) => {
+      const exifOrientation = exif.load(fileData);
+      const orientation = exifOrientation["0th"][exif.ImageIFD.Orientation];
+      const clean = exif.remove(fileData);
+      if (orientation !== undefined) {
+        // preserve img orientation
+        const exifData = { "0th": {} };
+        exifData["0th"][exif.ImageIFD.Orientation] = orientation;
+        const exifStr = exif.dump(exifData);
+        return exif.insert(exifStr, clean);
+      } else {
+        return clean;
+      }
+    };
+
+    const dataString = data.toString("binary");
+    // implementation borrowed from ssb-blob-files
+    // (which operates on a slightly different data structure, sadly)
+    // https://github.com/ssbc/ssb-blob-files/blob/master/async/image-process.js
+    data = Buffer.from(removeExif(dataString), "binary");
+  } catch (e) {
+    // blob was likely not a jpeg -- no exif data to remove. proceeding with blob upload
+  }
+
+  const addBlob = new Promise((resolve, reject) => {
+    pull(
+      pull.values([data]),
+      ssb.blobs.add((err, hashedBlobRef) => {
+        if (err) return reject(err);
+        resolve(hashedBlobRef);
+      })
+    );
+  });
+  let blob = {
+    id: await addBlob,
+    name: blobUpload.name,
+  };
+
+  // determine encoding to add the correct markdown link
+  const FileType = require("file-type");
+  try {
+    let fileType = await FileType.fromBuffer(data);
+    blob.mime = fileType.mime;
+  } catch (error) {
+    console.warn(error);
+    blob.mime = "application/octet-stream";
+  }
+
+  // append uploaded blob as markdown to the end of the input text
+  if (blob.mime.startsWith("image/")) {
+    return `\n![${blob.name}](${blob.id})`;
+  } else if (blob.mime.startsWith("audio/")) {
+    return `\n![audio:${blob.name}](${blob.id})`;
+  } else if (blob.mime.startsWith("video/")) {
+    return `\n![video:${blob.name}](${blob.id})`;
+  } else {
+    return `\n[${blob.name}](${blob.id})`;
+  }
+};
+
+const resolveCommentComponents = async function (ctx) {
+  const { message } = ctx.params;
+  const parentId = message;
+  const parentMessage = await post.get(parentId);
+  const myFeedId = await meta.myFeedId();
+
+  const hasRoot =
+    typeof parentMessage.value.content.root === "string" &&
+    ssbRef.isMsg(parentMessage.value.content.root);
+  const hasFork =
+    typeof parentMessage.value.content.fork === "string" &&
+    ssbRef.isMsg(parentMessage.value.content.fork);
+
+  const rootMessage = hasRoot
+    ? hasFork
+      ? parentMessage
+      : await post.get(parentMessage.value.content.root)
+    : parentMessage;
+
+  const messages = await post.topicComments(rootMessage.key);
+
+  messages.push(rootMessage);
+  let contentWarning;
+  if (ctx.request.body) {
+    const rawContentWarning = String(ctx.request.body.contentWarning).trim();
+    contentWarning =
+      rawContentWarning.length > 0 ? rawContentWarning : undefined;
+  }
+  return { messages, myFeedId, parentMessage, contentWarning };
+};
+
 const {
   authorView,
+  previewCommentView,
   commentView,
   editProfileView,
   indexingView,
@@ -163,11 +373,14 @@ const {
   markdownView,
   mentionsView,
   popularView,
+  previewView,
   privateView,
   publishCustomView,
   publishView,
-  replyView,
+  previewSubtopicView,
+  subtopicView,
   searchView,
+  imageSearchView,
   setLanguage,
   settingsView,
   topicsView,
@@ -270,11 +483,20 @@ router
   })
   .get("/author/:feed", async (ctx) => {
     const { feed } = ctx.params;
+
+    const gt = Number(ctx.request.query["gt"] || -1);
+    const lt = Number(ctx.request.query["lt"] || -1);
+
+    if (lt > 0 && gt > 0 && gt >= lt)
+      throw new Error("Given search range is empty");
+
     const author = async (feedId) => {
       const description = await about.description(feedId);
       const name = await about.name(feedId);
       const image = await about.image(feedId);
-      const messages = await post.fromPublicFeed(feedId);
+      const messages = await post.fromPublicFeed(feedId, gt, lt);
+      const firstPost = await post.firstBy(feedId);
+      const lastPost = await post.latestBy(feedId);
       const relationship = await friend.getRelationship(feedId);
 
       const avatarUrl = `/image/256/${encodeURIComponent(image)}`;
@@ -282,6 +504,8 @@ router
       return authorView({
         feedId,
         messages,
+        firstPost,
+        lastPost,
         name,
         description,
         avatarUrl,
@@ -290,7 +514,7 @@ router
     };
     ctx.body = await author(feed);
   })
-  .get("/search/", async (ctx) => {
+  .get("/search", async (ctx) => {
     let { query } = ctx.query;
 
     if (isMsg(query)) {
@@ -316,6 +540,13 @@ router
 
     ctx.body = await searchView({ messages, query });
   })
+  .get("/imageSearch", async (ctx) => {
+    const { query } = ctx.query;
+
+    const blobs = query ? await blob.search({ query }) : {};
+
+    ctx.body = await imageSearchView({ blobs, query });
+  })
   .get("/inbox", async (ctx) => {
     const inbox = async () => {
       const messages = await post.inbox();
@@ -338,20 +569,34 @@ router
     ctx.type = "text/css";
     ctx.body = requireStyle(filePath);
   })
-  .get("/profile/", async (ctx) => {
+  .get("/custom-style.css", (ctx) => {
+    ctx.type = "text/css";
+    ctx.body = requireStyle(customStyleFile);
+  })
+  .get("/profile", async (ctx) => {
     const myFeedId = await meta.myFeedId();
+
+    const gt = Number(ctx.request.query["gt"] || -1);
+    const lt = Number(ctx.request.query["lt"] || -1);
+
+    if (lt > 0 && gt > 0 && gt >= lt)
+      throw new Error("Given search range is empty");
 
     const description = await about.description(myFeedId);
     const name = await about.name(myFeedId);
     const image = await about.image(myFeedId);
 
-    const messages = await post.fromPublicFeed(myFeedId);
+    const messages = await post.fromPublicFeed(myFeedId, gt, lt);
+    const firstPost = await post.firstBy(myFeedId);
+    const lastPost = await post.latestBy(myFeedId);
 
     const avatarUrl = `/image/256/${encodeURIComponent(image)}`;
 
     ctx.body = await authorView({
       feedId: myFeedId,
       messages,
+      firstPost,
+      lastPost,
       name,
       description,
       avatarUrl,
@@ -380,7 +625,7 @@ router
     });
     ctx.redirect("/profile");
   })
-  .get("/publish/custom/", async (ctx) => {
+  .get("/publish/custom", async (ctx) => {
     ctx.body = await publishCustomView();
   })
   .get("/json/:message", async (ctx) => {
@@ -399,27 +644,7 @@ router
   })
   .get("/blob/:blobId", async (ctx) => {
     const { blobId } = ctx.params;
-    const getBlob = async ({ blobId }) => {
-      const bufferSource = await blob.get({ blobId });
-
-      debug("got buffer source");
-      return new Promise((resolve) => {
-        pull(
-          bufferSource,
-          pull.collect(async (err, bufferArray) => {
-            if (err) {
-              await blob.want({ blobId });
-              resolve(Buffer.alloc(0));
-            } else {
-              const buffer = Buffer.concat(bufferArray);
-              resolve(buffer);
-            }
-          })
-        );
-      });
-    };
-
-    const buffer = await getBlob({ blobId });
+    const buffer = await blob.getResolved({ blobId });
     ctx.body = buffer;
 
     if (ctx.body.length === 0) {
@@ -510,11 +735,10 @@ router
     };
     ctx.body = await image({ blobId, imageSize: Number(imageSize) });
   })
-  .get("/settings/", async (ctx) => {
+  .get("/settings", async (ctx) => {
     const theme = ctx.cookies.get("theme") || config.theme;
     const getMeta = async ({ theme }) => {
-      const status = await meta.status();
-      const peers = await meta.peers();
+      const peers = await meta.connectedPeers();
       const peersWithNames = await Promise.all(
         peers.map(async ([key, value]) => {
           value.name = await about.name(value.key);
@@ -523,7 +747,6 @@ router
       );
 
       return settingsView({
-        status,
         peers: peersWithNames,
         theme,
         themeNames,
@@ -545,13 +768,13 @@ router
     };
     ctx.body = await likes({ feed });
   })
-  .get("/settings/readme/", async (ctx) => {
+  .get("/settings/readme", async (ctx) => {
     const status = async (text) => {
       return markdownView({ text });
     };
     ctx.body = await status(readme);
   })
-  .get("/mentions/", async (ctx) => {
+  .get("/mentions", async (ctx) => {
     const mentions = async () => {
       const messages = await post.mentionsMe();
 
@@ -570,68 +793,102 @@ router
 
     ctx.body = await thread(message);
   })
-  .get("/reply/:message", async (ctx) => {
+  .get("/subtopic/:message", async (ctx) => {
     const { message } = ctx.params;
-    const reply = async (parentId) => {
-      const rootMessage = await post.get(parentId);
-      const myFeedId = await meta.myFeedId();
+    const rootMessage = await post.get(message);
+    const myFeedId = await meta.myFeedId();
 
-      debug("%O", rootMessage);
-      const messages = [rootMessage];
+    debug("%O", rootMessage);
+    const messages = [rootMessage];
 
-      return replyView({ messages, myFeedId });
-    };
-    ctx.body = await reply(message);
+    ctx.body = await subtopicView({ messages, myFeedId });
   })
   .get("/publish", async (ctx) => {
     ctx.body = await publishView();
   })
   .get("/comment/:message", async (ctx) => {
-    const { message } = ctx.params;
-    const comment = async (parentId) => {
-      const parentMessage = await post.get(parentId);
+    const {
+      messages,
+      myFeedId,
+      parentMessage,
+    } = await resolveCommentComponents(ctx);
+    ctx.body = await commentView({ messages, myFeedId, parentMessage });
+  })
+  .post(
+    "/subtopic/preview/:message",
+    koaBody({ multipart: true }),
+    async (ctx) => {
+      const { message } = ctx.params;
+      const rootMessage = await post.get(message);
       const myFeedId = await meta.myFeedId();
 
-      const hasRoot =
-        typeof parentMessage.value.content.root === "string" &&
-        ssbRef.isMsg(parentMessage.value.content.root);
-      const hasFork =
-        typeof parentMessage.value.content.fork === "string" &&
-        ssbRef.isMsg(parentMessage.value.content.fork);
+      const rawContentWarning = String(ctx.request.body.contentWarning).trim();
+      const contentWarning =
+        rawContentWarning.length > 0 ? rawContentWarning : undefined;
 
-      const rootMessage = hasRoot
-        ? hasFork
-          ? parentMessage
-          : await post.get(parentMessage.value.content.root)
-        : parentMessage;
+      const messages = [rootMessage];
 
-      const messages = await post.threadReplies(rootMessage.key);
+      const previewData = await preparePreview(ctx);
 
-      messages.push(rootMessage);
-
-      return commentView({ messages, myFeedId, parentMessage });
-    };
-    ctx.body = await comment(message);
-  })
-  .post("/reply/:message", koaBody(), async (ctx) => {
+      ctx.body = await previewSubtopicView({
+        messages,
+        myFeedId,
+        previewData,
+        contentWarning,
+      });
+    }
+  )
+  .post("/subtopic/:message", koaBody(), async (ctx) => {
     const { message } = ctx.params;
     const text = String(ctx.request.body.text);
-    const publishReply = async ({ message, text }) => {
+
+    const rawContentWarning = String(ctx.request.body.contentWarning).trim();
+    const contentWarning =
+      rawContentWarning.length > 0 ? rawContentWarning : undefined;
+
+    const publishSubtopic = async ({ message, text }) => {
       // TODO: rename `message` to `parent` or `ancestor` or similar
       const mentions = ssbMentions(text) || undefined;
 
       const parent = await post.get(message);
-      return post.reply({
+      return post.subtopic({
         parent,
-        message: { text, mentions },
+        message: { text, mentions, contentWarning },
       });
     };
-    ctx.body = await publishReply({ message, text });
+    ctx.body = await publishSubtopic({ message, text });
     ctx.redirect(`/thread/${encodeURIComponent(message)}`);
   })
+  .post(
+    "/comment/preview/:message",
+    koaBody({ multipart: true }),
+    async (ctx) => {
+      const {
+        messages,
+        contentWarning,
+        myFeedId,
+        parentMessage,
+      } = await resolveCommentComponents(ctx);
+
+      const previewData = await preparePreview(ctx);
+
+      ctx.body = await previewCommentView({
+        messages,
+        myFeedId,
+        contentWarning,
+        parentMessage,
+        previewData,
+      });
+    }
+  )
   .post("/comment/:message", koaBody(), async (ctx) => {
     const { message } = ctx.params;
     const text = String(ctx.request.body.text);
+
+    const rawContentWarning = String(ctx.request.body.contentWarning);
+    const contentWarning =
+      rawContentWarning.length > 0 ? rawContentWarning : undefined;
+
     const publishComment = async ({ message, text }) => {
       // TODO: rename `message` to `parent` or `ancestor` or similar
       const mentions = ssbMentions(text) || undefined;
@@ -639,13 +896,23 @@ router
 
       return post.comment({
         parent,
-        message: { text, mentions },
+        message: { text, mentions, contentWarning },
       });
     };
     ctx.body = await publishComment({ message, text });
     ctx.redirect(`/thread/${encodeURIComponent(message)}`);
   })
-  .post("/publish/", koaBody(), async (ctx) => {
+  .post("/publish/preview", koaBody({ multipart: true }), async (ctx) => {
+    const rawContentWarning = String(ctx.request.body.contentWarning).trim();
+
+    // Only submit content warning if it's a string with non-zero length.
+    const contentWarning =
+      rawContentWarning.length > 0 ? rawContentWarning : undefined;
+
+    const previewData = await preparePreview(ctx);
+    ctx.body = await previewView({ previewData, contentWarning });
+  })
+  .post("/publish", koaBody(), async (ctx) => {
     const text = String(ctx.request.body.text);
     const rawContentWarning = String(ctx.request.body.contentWarning);
 
@@ -755,6 +1022,10 @@ router
     await meta.connStop();
     ctx.redirect("/settings");
   })
+  .post("/settings/conn/sync", koaBody(), async (ctx) => {
+    await meta.sync();
+    ctx.redirect("/settings");
+  })
   .post("/settings/conn/restart", koaBody(), async (ctx) => {
     await meta.connRestart();
     ctx.redirect("/settings");
@@ -762,6 +1033,11 @@ router
   .post("/settings/invite/accept", koaBody(), async (ctx) => {
     const invite = String(ctx.request.body.invite);
     await meta.acceptInvite(invite);
+    ctx.redirect("/settings");
+  })
+  .post("/settings/rebuild", async (ctx) => {
+    // Do not wait for rebuild to finish.
+    meta.rebuild();
     ctx.redirect("/settings");
   });
 
@@ -814,7 +1090,7 @@ const app = http({ host, port, middleware, allowHost });
 // If we close the database after each test it throws lots of really fun "parent
 // stream closing" errors everywhere and breaks the tests. :/
 app._close = () => {
-  isClosingAfterTest = true;
+  nameWarmup.close();
   cooler.close();
 };
 

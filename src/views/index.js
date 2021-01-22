@@ -1,9 +1,14 @@
 "use strict";
 
+const path = require("path");
+const envPaths = require("env-paths");
+const fs = require("fs");
+
 const debug = require("debug")("oasis");
 const highlightJs = require("highlight.js");
 
 const MarkdownIt = require("markdown-it");
+const prettyMs = require("pretty-ms");
 
 const {
   a,
@@ -20,6 +25,7 @@ const {
   h2,
   head,
   header,
+  hr,
   html,
   img,
   input,
@@ -45,9 +51,8 @@ const {
 const lodash = require("lodash");
 const markdown = require("./markdown");
 
-const md = new MarkdownIt();
-
 const i18nBase = require("./i18n");
+
 let selectedLanguage = "en";
 let i18n = i18nBase[selectedLanguage];
 
@@ -69,20 +74,39 @@ const toAttributes = (obj) =>
 // non-breaking space
 const nbsp = "\xa0";
 
-/**
- * @param {{href: string, emoji: string, text: string }} input
- */
-const navLink = ({ href, emoji, text }) =>
-  li(a({ href }, span({ class: "emoji" }, emoji), nbsp, text));
+const template = (titlePrefix, ...elements) => {
+  const navLink = ({ href, emoji, text }) =>
+    li(
+      a(
+        { href, class: titlePrefix === text ? "current" : "" },
+        span({ class: "emoji" }, emoji),
+        nbsp,
+        text
+      )
+    );
 
-const template = (...elements) => {
+  const customCSS = (filename) => {
+    const customStyleFile = path.join(
+      envPaths("oasis", { suffix: "" }).config,
+      filename
+    );
+    try {
+      if (fs.existsSync(customStyleFile)) {
+        return link({ rel: "stylesheet", href: filename });
+      }
+    } catch (error) {
+      return "";
+    }
+  };
+
   const nodes = html(
     { lang: "en" },
     head(
-      title("Oasis"),
+      title(titlePrefix, " - Oasis"),
       link({ rel: "stylesheet", href: "/theme.css" }),
       link({ rel: "stylesheet", href: "/assets/style.css" }),
       link({ rel: "stylesheet", href: "/assets/highlight.css" }),
+      customCSS("/custom-style.css"),
       link({ rel: "icon", type: "image/svg+xml", href: "/assets/favicon.svg" }),
       meta({ charset: "utf-8" }),
       meta({
@@ -132,6 +156,11 @@ const template = (...elements) => {
           navLink({ href: "/mentions", emoji: "💬", text: i18n.mentions }),
           navLink({ href: "/inbox", emoji: "✉️", text: i18n.private }),
           navLink({ href: "/search", emoji: "🔍", text: i18n.search }),
+          navLink({
+            href: "/imageSearch",
+            emoji: "🖼️",
+            text: i18n.imageSearch,
+          }),
           navLink({ href: "/settings", emoji: "⚙", text: i18n.settings })
         )
       ),
@@ -142,134 +171,6 @@ const template = (...elements) => {
   const result = doctypeString + nodes.outerHTML;
 
   return result;
-};
-
-const postInAside = (msg) => {
-  const encoded = {
-    key: encodeURIComponent(msg.key),
-    author: encodeURIComponent(msg.value.author),
-    parent: encodeURIComponent(msg.value.content.root),
-  };
-
-  const url = {
-    author: `/author/${encoded.author}`,
-    likeForm: `/like/${encoded.key}`,
-    link: `/thread/${encoded.parent}#${encoded.key}`,
-    parent: `/thread/${encoded.parent}#${encoded.parent}`,
-    avatar: msg.value.meta.author.avatar.url,
-    json: `/json/${encoded.key}`,
-    reply: `/reply/${encoded.key}`,
-    comment: `/comment/${encoded.key}`,
-  };
-
-  const isPrivate = Boolean(msg.value.meta.private);
-  const isRoot = msg.value.content.root == null;
-  const isFork = msg.value.meta.postType === "reply";
-  const hasContentWarning =
-    typeof msg.value.content.contentWarning === "string";
-  const isThreadTarget = Boolean(
-    lodash.get(msg, "value.meta.thread.target", false)
-  );
-
-  // TODO: I think this is actually true for both replies and comments.
-  const isReply = Boolean(lodash.get(msg, "value.meta.thread.reply", false));
-
-  const timeAgo = msg.value.meta.timestamp.received.since.replace("~", "");
-
-  const markdownContent = markdown(
-    msg.value.content.text,
-    msg.value.content.mentions
-  );
-
-  const likeButton = msg.value.meta.voted
-    ? { value: 0, class: "liked" }
-    : { value: 1, class: null };
-
-  const likeCount = msg.value.meta.votes.length;
-
-  const messageClasses = [];
-
-  if (isPrivate) {
-    messageClasses.push("private");
-  }
-
-  if (isThreadTarget) {
-    messageClasses.push("thread-target");
-  }
-
-  if (isReply) {
-    // True for comments too, I think
-    messageClasses.push("reply");
-  }
-
-  const postOptions = {
-    post: null,
-    comment: i18n.commentDescription({ parentUrl: url.parent }),
-    reply: i18n.replyDescription({ parentUrl: url.parent }),
-    mystery: i18n.mysteryDescription,
-  };
-
-  const isMarkdownEmpty = (md) => md === "<p>undefined</p>\n";
-  const articleElement = isMarkdownEmpty(markdownContent)
-    ? article(
-        { class: "content" },
-        pre({
-          innerHTML: highlightJs.highlight("json", JSON.stringify(msg, null, 2))
-            .value,
-        })
-      )
-    : article({ class: "content", innerHTML: markdownContent });
-
-  const articleContent = hasContentWarning
-    ? details(summary(msg.value.content.contentWarning), articleElement)
-    : articleElement;
-
-  return section(
-    {
-      class: messageClasses.join(" "),
-    },
-    header(
-      div(
-        span(
-          { class: "author" },
-          a(
-            { href: url.author },
-            img({ class: "avatar", src: url.avatar, alt: "" }),
-            msg.value.meta.author.name
-          ),
-          postOptions[msg.value.meta.postType]
-        ),
-        span(
-          { class: "time" },
-          isPrivate ? "🔒" : null,
-          a({ href: url.link }, nbsp, timeAgo)
-        )
-      )
-    ),
-    articleContent,
-    footer(
-      div(
-        form(
-          { action: url.likeForm, method: "post" },
-          button(
-            {
-              name: "voteValue",
-              type: "submit",
-              value: likeButton.value,
-              class: likeButton.class,
-            },
-            `❤ ${likeCount}`
-          )
-        ),
-        a({ href: url.comment }, i18n.comment),
-        isPrivate || isRoot || isFork
-          ? null
-          : a({ href: url.reply }, nbsp, i18n.reply),
-        a({ href: url.json }, nbsp, i18n.json)
-      ),
-      br()
-    )
-  );
 };
 
 const thread = (messages) => {
@@ -323,7 +224,9 @@ const thread = (messages) => {
 
       const nextAuthor = lodash.get(nextMsg, "value.meta.author.name");
       const nextSnippet = postSnippet(
-        lodash.get(nextMsg, "value.content.text")
+        lodash.has(nextMsg, "value.content.contentWarning")
+          ? lodash.get(nextMsg, "value.content.contentWarning")
+          : lodash.get(nextMsg, "value.content.text")
       );
 
       msgList.push(summary(`${nextAuthor}: ${nextSnippet}`).outerHTML);
@@ -342,7 +245,10 @@ const thread = (messages) => {
   }
 
   const htmlStrings = lodash.flatten(msgList);
-  return div({}, { innerHTML: htmlStrings.join("") });
+  return div(
+    {},
+    { class: "thread-container", innerHTML: htmlStrings.join("") }
+  );
 };
 
 const postSnippet = (text) => {
@@ -419,7 +325,7 @@ const postAside = ({ key, value }) => {
     );
   }
 
-  const fragments = postsToShow.map(postInAside);
+  const fragments = postsToShow.map((p) => post({ msg: p }));
 
   if (thread.length > THREAD_PREVIEW_LENGTH + 1) {
     fragments.push(section(continueThreadComponent(thread, isComment)));
@@ -442,36 +348,35 @@ const post = ({ msg, aside = false }) => {
     parent: `/thread/${encoded.parent}#${encoded.parent}`,
     avatar: msg.value.meta.author.avatar.url,
     json: `/json/${encoded.key}`,
-    reply: `/reply/${encoded.key}`,
+    subtopic: `/subtopic/${encoded.key}`,
     comment: `/comment/${encoded.key}`,
   };
 
   const isPrivate = Boolean(msg.value.meta.private);
   const isRoot = msg.value.content.root == null;
+  const isFork = msg.value.meta.postType === "subtopic";
+  const hasContentWarning =
+    typeof msg.value.content.contentWarning === "string";
   const isThreadTarget = Boolean(
     lodash.get(msg, "value.meta.thread.target", false)
   );
 
-  // TODO: I think this is actually true for both replies and comments.
-  const isReply = Boolean(lodash.get(msg, "value.meta.thread.reply", false));
-
   const { name } = msg.value.meta.author;
-  const timeAgo = msg.value.meta.timestamp.received.since.replace("~", "");
+
+  const ts_received = msg.value.meta.timestamp.received;
+  const timeAgo = ts_received.since.replace("~", "");
+  const timeAbsolute = ts_received.iso8601.split(".")[0].replace("T", " ");
 
   const markdownContent = markdown(
     msg.value.content.text,
     msg.value.content.mentions
   );
 
-  const hasContentWarning =
-    typeof msg.value.content.contentWarning === "string";
-
   const likeButton = msg.value.meta.voted
     ? { value: 0, class: "liked" }
     : { value: 1, class: null };
 
   const likeCount = msg.value.meta.votes.length;
-
   const maxLikedNameLength = 16;
   const maxLikedNames = 16;
 
@@ -496,18 +401,11 @@ const post = ({ msg, aside = false }) => {
     messageClasses.push("thread-target");
   }
 
-  if (isReply) {
-    // True for comments too, I think
-    messageClasses.push("reply");
-  }
-
-  const isFork = msg.value.meta.postType === "reply";
-
   // TODO: Refactor to stop using strings and use constants/symbols.
   const postOptions = {
     post: null,
     comment: i18n.commentDescription({ parentUrl: url.parent }),
-    reply: i18n.replyDescription({ parentUrl: url.parent }),
+    subtopic: i18n.subtopicDescription({ parentUrl: url.parent }),
     mystery: i18n.mysteryDescription,
   };
 
@@ -542,11 +440,14 @@ const post = ({ msg, aside = false }) => {
             { href: url.author },
             img({ class: "avatar", src: url.avatar, alt: "" }),
             name
-          ),
-          postOptions[msg.value.meta.postType]
+          )
         ),
+        span({ class: "author-action" }, postOptions[msg.value.meta.postType]),
         span(
-          { class: "time" },
+          {
+            class: "time",
+            title: timeAbsolute,
+          },
           isPrivate ? "🔒" : null,
           a({ href: url.link }, nbsp, timeAgo)
         )
@@ -583,15 +484,17 @@ const post = ({ msg, aside = false }) => {
         a({ href: url.comment }, i18n.comment),
         isPrivate || isRoot || isFork
           ? null
-          : a({ href: url.reply }, nbsp, i18n.reply),
+          : a({ href: url.subtopic }, nbsp, i18n.subtopic),
         a({ href: url.json }, nbsp, i18n.json)
       ),
       br()
     )
   );
 
+  const threadSeparator = [div({ class: "text-browser" }, hr(), br())];
+
   if (aside) {
-    return [fragment, postAside(msg)];
+    return [fragment, postAside(msg), isRoot ? threadSeparator : null];
   } else {
     return fragment;
   }
@@ -599,6 +502,7 @@ const post = ({ msg, aside = false }) => {
 
 exports.editProfileView = ({ name, description }) =>
   template(
+    i18n.editProfile,
     section(
       h1(i18n.editProfile),
       p(i18n.editProfileDescription),
@@ -634,13 +538,15 @@ exports.editProfileView = ({ name, description }) =>
   );
 
 /**
- * @param {{avatarUrl: string, description: string, feedId: string, messages: any[], name: string, relationship: object}} input
+ * @param {{avatarUrl: string, description: string, feedId: string, messages: any[], name: string, relationship: object, firstPost: object, lastPost: object}} input
  */
 exports.authorView = ({
   avatarUrl,
   description,
   feedId,
   messages,
+  firstPost,
+  lastPost,
   name,
   relationship,
 }) => {
@@ -729,13 +635,81 @@ exports.authorView = ({
     )
   );
 
-  return template(
-    prefix,
-    messages.map((msg) => post({ msg }))
+  const linkUrl = relationship.me
+    ? "/profile/"
+    : `/author/${encodeURIComponent(feedId)}/`;
+
+  let items = messages.map((msg) => post({ msg }));
+  if (items.length === 0) {
+    if (lastPost === undefined) {
+      items.push(section(div(span(i18n.feedEmpty))));
+    } else {
+      items.push(
+        section(
+          div(
+            span(i18n.feedRangeEmpty),
+            a({ href: `${linkUrl}` }, i18n.seeFullFeed)
+          )
+        )
+      );
+    }
+  } else {
+    const highestSeqNum = messages[0].value.sequence;
+    const lowestSeqNum = messages[messages.length - 1].value.sequence;
+    let newerPostsLink;
+    if (lastPost !== undefined && highestSeqNum < lastPost.value.sequence)
+      newerPostsLink = a(
+        { href: `${linkUrl}?gt=${highestSeqNum}` },
+        i18n.newerPosts
+      );
+    else newerPostsLink = span(i18n.newerPosts, { title: i18n.noNewerPosts });
+    let olderPostsLink;
+    if (lowestSeqNum > firstPost.value.sequence)
+      olderPostsLink = a(
+        { href: `${linkUrl}?lt=${lowestSeqNum}` },
+        i18n.olderPosts
+      );
+    else
+      olderPostsLink = span(i18n.olderPosts, { title: i18n.beginningOfFeed });
+    const pagination = section(
+      { class: "message" },
+      footer(div(newerPostsLink, olderPostsLink), br())
+    );
+    items.unshift(pagination);
+    items.push(pagination);
+  }
+
+  return template(i18n.profile, prefix, items);
+};
+
+exports.previewCommentView = async ({
+  previewData,
+  messages,
+  myFeedId,
+  parentMessage,
+  contentWarning,
+}) => {
+  const publishAction = `/comment/${encodeURIComponent(messages[0].key)}`;
+
+  const preview = generatePreview({
+    previewData,
+    contentWarning,
+    action: publishAction,
+  });
+  return exports.commentView(
+    { messages, myFeedId, parentMessage },
+    preview,
+    previewData.text,
+    contentWarning
   );
 };
 
-exports.commentView = async ({ messages, myFeedId, parentMessage }) => {
+exports.commentView = async (
+  { messages, myFeedId, parentMessage },
+  preview,
+  text,
+  contentWarning
+) => {
   let markdownMention;
 
   const messageElements = await Promise.all(
@@ -753,36 +727,46 @@ exports.commentView = async ({ messages, myFeedId, parentMessage }) => {
     })
   );
 
-  const action = `/comment/${encodeURIComponent(messages[0].key)}`;
+  const action = `/comment/preview/${encodeURIComponent(messages[0].key)}`;
   const method = "post";
 
   const isPrivate = parentMessage.value.meta.private;
+  const authorName = parentMessage.value.meta.author.name;
 
   const publicOrPrivate = isPrivate ? i18n.commentPrivate : i18n.commentPublic;
-  const maybeReplyText = isPrivate ? [null] : i18n.commentWarning;
+  const maybeSubtopicText = isPrivate ? [null] : i18n.commentWarning;
 
   return template(
-    messageElements,
+    i18n.commentTitle({ authorName }),
+    div({ class: "thread-container" }, messageElements),
+    preview !== undefined ? preview : "",
     p(
       ...i18n.commentLabel({ publicOrPrivate, markdownUrl }),
-      ...maybeReplyText
+      ...maybeSubtopicText
     ),
     form(
-      { action, method },
+      { action, method, enctype: "multipart/form-data" },
       textarea(
         {
           autofocus: true,
           required: true,
           name: "text",
         },
-        isPrivate ? null : markdownMention
+        text ? text : isPrivate ? null : markdownMention
       ),
-      button(
-        {
-          type: "submit",
-        },
-        i18n.comment
-      )
+      label(
+        i18n.contentWarningLabel,
+        input({
+          name: "contentWarning",
+          type: "text",
+          class: "contentWarning",
+          value: contentWarning ? contentWarning : "",
+          placeholder: i18n.contentWarningPlaceholder,
+        })
+      ),
+      button({ type: "submit" }, i18n.preview),
+      label({ class: "file-button", for: "blob" }, i18n.attachFiles),
+      input({ type: "file", id: "blob", name: "blob" })
     )
   );
 };
@@ -808,6 +792,7 @@ exports.publishCustomView = async () => {
   const method = "post";
 
   return template(
+    i18n.publishCustom,
     section(
       h1(i18n.publishCustom),
       p(i18n.publishCustomDescription),
@@ -836,25 +821,41 @@ exports.publishCustomView = async () => {
   );
 };
 
-exports.threadView = ({ messages }) => template(thread(messages));
+exports.threadView = ({ messages }) => {
+  const rootMessage = messages[0];
+  const rootAuthorName = rootMessage.value.meta.author.name;
+  const rootSnippet = postSnippet(
+    lodash.get(rootMessage, "value.content.text", i18n.mysteryDescription)
+  );
+  return template([`@${rootAuthorName}: `, rootSnippet], thread(messages));
+};
 
+// this view is only used for the /settings/readme page.
+// To fix style glitches it uses the default MarkdownIt and not ssb-markdown.
+const md = new MarkdownIt();
 exports.markdownView = ({ text }) => {
   const rawHtml = md.render(text);
 
-  return template(section({ class: "message" }, { innerHTML: rawHtml }));
+  return template(
+    postSnippet(text),
+    section({ class: "message" }, { innerHTML: rawHtml })
+  );
 };
 
-exports.publishView = () => {
-  const publishForm = "/publish/";
-
+exports.publishView = (preview, text, contentWarning) => {
   return template(
+    i18n.publish,
     section(
       h1(i18n.publish),
       form(
-        { action: publishForm, method: "post" },
+        {
+          action: "/publish/preview",
+          method: "post",
+          enctype: "multipart/form-data",
+        },
         label(
           i18n.publishLabel({ markdownUrl, linkTarget: "_blank" }),
-          textarea({ required: true, name: "text" })
+          textarea({ required: true, name: "text" }, text ? text : "")
         ),
         label(
           i18n.contentWarningLabel,
@@ -862,28 +863,152 @@ exports.publishView = () => {
             name: "contentWarning",
             type: "text",
             class: "contentWarning",
+            value: contentWarning ? contentWarning : "",
             placeholder: i18n.contentWarningPlaceholder,
           })
         ),
-        button({ type: "submit" }, i18n.submit)
+        button({ type: "submit" }, i18n.preview),
+        label({ class: "file-button", for: "blob" }, i18n.attachFiles),
+        input({ type: "file", id: "blob", name: "blob" })
       )
     ),
+    preview ? preview : "",
     p(i18n.publishCustomInfo({ href: "/publish/custom" }))
   );
+};
+
+const generatePreview = ({ previewData, contentWarning, action }) => {
+  const { authorMeta, text, mentions } = previewData;
+
+  // craft message that looks like it came from the db
+  // cb: this kinda fragile imo? this is for getting a proper post styling ya?
+  const msg = {
+    key: "%non-existent.preview",
+    value: {
+      author: authorMeta.id,
+      // sequence: -1,
+      content: {
+        type: "post",
+        text: text,
+      },
+      timestamp: Date.now(),
+      meta: {
+        isPrivate: true,
+        votes: [],
+        author: {
+          name: authorMeta.name,
+          avatar: {
+            url: `/image/64/${encodeURIComponent(authorMeta.image)}`,
+          },
+        },
+      },
+    },
+  };
+  if (contentWarning) msg.value.content.contentWarning = contentWarning;
+  const ts = new Date(msg.value.timestamp);
+  lodash.set(msg, "value.meta.timestamp.received.iso8601", ts.toISOString());
+  const ago = Date.now() - Number(ts);
+  const prettyAgo = prettyMs(ago, { compact: true });
+  lodash.set(msg, "value.meta.timestamp.received.since", prettyAgo);
+  return div(
+    Object.keys(mentions).length === 0
+      ? ""
+      : section(
+          { class: "mention-suggestions" },
+          h2(i18n.mentionsMatching),
+          Object.keys(mentions).map((name) => {
+            let matches = mentions[name];
+
+            return div(
+              matches.map((m) => {
+                let relationship = { emoji: "", desc: "" };
+                if (m.rel.followsMe && m.rel.following) {
+                  // mutuals get the handshake emoji
+                  relationship.emoji = "🤝";
+                  relationship.desc = i18n.relationshipMutuals;
+                } else if (m.rel.following) {
+                  // if we're following that's an eyes emoji
+                  relationship.emoji = "👀";
+                  relationship.desc = i18n.relationshipFollowing;
+                } else if (m.rel.followsMe) {
+                  // follower has waving-hand emoji
+                  relationship.emoji = "👋";
+                  relationship.desc = i18n.relationshipTheyFollow;
+                } else {
+                  // no relationship has question mark emoji
+                  relationship.emoji = "❓";
+                  relationship.desc = i18n.relationshipNotFollowing;
+                }
+                return div(
+                  { class: "mentions-container" },
+                  a(
+                    {
+                      class: "mentions-image",
+                      href: `/author/${encodeURIComponent(m.feed)}`,
+                    },
+                    img({ src: `/image/64/${encodeURIComponent(m.img)}` })
+                  ),
+                  a(
+                    {
+                      class: "mentions-name",
+                      href: `/author/${encodeURIComponent(m.feed)}`,
+                    },
+                    m.name
+                  ),
+                  div(
+                    { class: "emo-rel" },
+                    span(
+                      { class: "emoji", title: relationship.desc },
+                      relationship.emoji
+                    ),
+                    span(
+                      { class: "mentions-listing" },
+                      `[@${m.name}](${m.feed})`
+                    )
+                  )
+                );
+              })
+            );
+          })
+        ),
+    section(
+      { class: "post-preview" },
+      post({ msg }),
+
+      // doesn't need blobs, preview adds them to the text
+      form(
+        { action, method: "post" },
+        input({
+          name: "contentWarning",
+          type: "hidden",
+          value: contentWarning,
+        }),
+        input({
+          name: "text",
+          type: "hidden",
+          value: text,
+        }),
+        button({ type: "submit" }, i18n.publish)
+      )
+    )
+  );
+};
+
+exports.previewView = ({ previewData, contentWarning }) => {
+  const publishAction = "/publish";
+
+  const preview = generatePreview({
+    previewData,
+    contentWarning,
+    action: publishAction,
+  });
+  return exports.publishView(preview, previewData.text, contentWarning);
 };
 
 /**
  * @param {{status: object, peers: any[], theme: string, themeNames: string[], version: string }} input
  */
-exports.settingsView = ({ status, peers, theme, themeNames, version }) => {
-  const max = status.sync.since;
-
-  const progressElements = Object.entries(status.sync.plugins).map((e) => {
-    const [key, val] = e;
-    const id = `progress-${key}`;
-    return div(label(key, progress({ id, value: val, max }, val)));
-  });
-
+exports.settingsView = ({ peers, theme, themeNames, version }) => {
   const startButton = form(
     { action: "/settings/conn/start", method: "post" },
     button({ type: "submit" }, i18n.startNetworking)
@@ -899,10 +1024,16 @@ exports.settingsView = ({ status, peers, theme, themeNames, version }) => {
     button({ type: "submit" }, i18n.stopNetworking)
   );
 
+  const syncButton = form(
+    { action: "/settings/conn/sync", method: "post" },
+    button({ type: "submit" }, i18n.sync)
+  );
+
   const connButtons = div({ class: "form-button-group" }, [
     startButton,
     restartButton,
     stopButton,
+    syncButton,
   ]);
 
   const peerList = (peers || [])
@@ -950,12 +1081,18 @@ exports.settingsView = ({ status, peers, theme, themeNames, version }) => {
     })
   );
 
-  const languageOption = (shortName, longName) =>
+  const languageOption = (longName, shortName) =>
     shortName === selectedLanguage
       ? option({ value: shortName, selected: true }, longName)
       : option({ value: shortName }, longName);
 
+  const rebuildButton = form(
+    { action: "/settings/rebuild", method: "post" },
+    button({ type: "submit" }, i18n.rebuildName)
+  );
+
   return template(
+    i18n.settings,
     section(
       { class: "message" },
       h1(i18n.settings),
@@ -985,17 +1122,20 @@ exports.settingsView = ({ status, peers, theme, themeNames, version }) => {
       form(
         { action: "/language", method: "post" },
         select({ name: "language" }, [
-          /* cspell:disable */
-          languageOption("en", "English"),
-          languageOption("es", "Español"),
-          languageOption("it", "Italiano"),
-          languageOption("de", "Deutsch"),
-          /* cspell:enable */
+          // Languages are sorted alphabetically by their 'long name'.
+          /* spell-checker:disable */
+          languageOption("Deutsch", "de"),
+          languageOption("English", "en"),
+          languageOption("Español", "es"),
+          languageOption("Français", "fr"),
+          languageOption("Italiano", "it"),
+          /* spell-checker:enable */
         ]),
         button({ type: "submit" }, i18n.setLanguage)
       ),
       h2(i18n.indexes),
-      progressElements
+      p(i18n.indexesDescription),
+      rebuildButton
     )
   );
 };
@@ -1019,6 +1159,7 @@ exports.likesView = async ({ messages, feed, name }) => {
   );
 
   return template(
+    ["@", name, i18n.likedBy],
     viewInfoBox({
       viewTitle: span(authorLink, i18n.likedBy),
       // TODO: i18n
@@ -1037,6 +1178,7 @@ const messageListView = ({
   aside = null,
 }) => {
   return template(
+    viewTitle,
     section(h1(viewTitle), p(viewDescription), viewElements),
     messages.map((msg) => post({ msg, aside }))
   );
@@ -1093,8 +1235,34 @@ exports.threadsView = ({ messages }) => {
   });
 };
 
-exports.replyView = async ({ messages, myFeedId }) => {
-  const replyForm = `/reply/${encodeURIComponent(
+exports.previewSubtopicView = async ({
+  previewData,
+  messages,
+  myFeedId,
+  contentWarning,
+}) => {
+  const publishAction = `/subtopic/${encodeURIComponent(messages[0].key)}`;
+
+  const preview = generatePreview({
+    previewData,
+    contentWarning,
+    action: publishAction,
+  });
+  return exports.subtopicView(
+    { messages, myFeedId },
+    preview,
+    previewData.text,
+    contentWarning
+  );
+};
+
+exports.subtopicView = async (
+  { messages, myFeedId },
+  preview,
+  text,
+  contentWarning
+) => {
+  const subtopicForm = `/subtopic/preview/${encodeURIComponent(
     messages[messages.length - 1].key
   )}`;
 
@@ -1115,25 +1283,36 @@ exports.replyView = async ({ messages, myFeedId }) => {
     })
   );
 
+  const authorName = messages[messages.length - 1].value.meta.author.name;
+
   return template(
-    messageElements,
-    p(i18n.replyLabel({ markdownUrl })),
+    i18n.subtopicTitle({ authorName }),
+    div({ class: "thread-container" }, messageElements),
+    preview !== undefined ? preview : "",
+    p(i18n.subtopicLabel({ markdownUrl })),
     form(
-      { action: replyForm, method: "post" },
+      { action: subtopicForm, method: "post", enctype: "multipart/form-data" },
       textarea(
         {
           autofocus: true,
           required: true,
           name: "text",
         },
-        markdownMention
+        text ? text : markdownMention
       ),
-      button(
-        {
-          type: "submit",
-        },
-        i18n.reply
-      )
+      label(
+        i18n.contentWarningLabel,
+        input({
+          name: "contentWarning",
+          type: "text",
+          class: "contentWarning",
+          value: contentWarning ? contentWarning : "",
+          placeholder: i18n.contentWarningPlaceholder,
+        })
+      ),
+      button({ type: "submit" }, i18n.preview),
+      label({ class: "file-button", for: "blob" }, i18n.attachFiles),
+      input({ type: "file", id: "blob", name: "blob" })
     )
   );
 };
@@ -1154,6 +1333,7 @@ exports.searchView = ({ messages, query }) => {
   searchInput.setAttribute("minlength", 3);
 
   return template(
+    i18n.search,
     section(
       h1(i18n.search),
       form(
@@ -1171,8 +1351,80 @@ exports.searchView = ({ messages, query }) => {
   );
 };
 
+const imageResult = ({ id, infos }) => {
+  const encodedBlobId = encodeURIComponent(id);
+  // only rendering the first message result so far
+  // todo: render links to the others as well
+  const info = infos[0];
+  const encodedMsgId = encodeURIComponent(info.msg);
+
+  return div(
+    {
+      class: "image-result",
+    },
+    [
+      a(
+        {
+          href: `/blob/${encodedBlobId}`,
+        },
+        img({ src: `/image/256/${encodedBlobId}` })
+      ),
+      a(
+        {
+          href: `/thread/${encodedMsgId}#${encodedMsgId}`,
+          class: "result-text",
+        },
+        info.name
+      ),
+    ]
+  );
+};
+
+exports.imageSearchView = ({ blobs, query }) => {
+  const searchInput = input({
+    name: "query",
+    required: false,
+    type: "search",
+    value: query,
+  });
+
+  // - Minimum length of 3 because otherwise SSB-Search hangs forever. :)
+  //   https://github.com/ssbc/ssb-search/issues/8
+  // - Using `setAttribute()` because HyperScript (the HyperAxe dependency has
+  //   a bug where the `minlength` property is being ignored. No idea why.
+  //   https://github.com/hyperhype/hyperscript/issues/91
+  searchInput.setAttribute("minlength", 3);
+
+  return template(
+    i18n.imageSearch,
+    section(
+      h1(i18n.imageSearch),
+      form(
+        { action: "/imageSearch", method: "get" },
+        label(i18n.imageSearchLabel, searchInput),
+        button(
+          {
+            type: "submit",
+          },
+          i18n.submit
+        )
+      )
+    ),
+    div(
+      {
+        class: "image-search-grid",
+      },
+      Object.keys(blobs)
+        // todo: add pagination
+        .slice(0, 30)
+        .map((blobId) => imageResult({ id: blobId, infos: blobs[blobId] }))
+    )
+  );
+};
+
 exports.hashtagView = ({ messages, hashtag }) => {
   return template(
+    `#${hashtag}`,
     section(h1(`#${hashtag}`), p(i18n.hashtagDescription)),
     messages.map((msg) => post({ msg }))
   );

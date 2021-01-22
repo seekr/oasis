@@ -7,21 +7,26 @@
 const { promisify } = require("util");
 const ssbClient = require("ssb-client");
 const ssbConfig = require("ssb-config");
-const flotilla = require("@fraction/flotilla");
 const ssbTangle = require("ssb-tangle");
+const ssbKeys = require("ssb-keys");
 const debug = require("debug")("oasis");
 const path = require("path");
-const pull = require("pull-stream");
 const lodash = require("lodash");
+const fs = require("fs");
+const os = require("os");
+
+const flotilla = require("./flotilla");
+
+// Use temporary path if we're running a test.
+// TODO: Refactor away 'OASIS_TEST' variable.
+if (process.env.OASIS_TEST) {
+  ssbConfig.path = fs.mkdtempSync(path.join(os.tmpdir(), "oasis-"));
+  ssbConfig.keys = ssbKeys.generate();
+}
 
 const socketPath = path.join(ssbConfig.path, "socket");
 const publicInteger = ssbConfig.keys.public.replace(".ed25519", "");
 const remote = `unix:${socketPath}~noauth:${publicInteger}`;
-
-// This is unnecessary when https://github.com/ssbc/ssb-config/pull/72 is merged
-ssbConfig.connections.incoming.unix = [
-  { scope: "device", transform: "noauth" },
-];
 
 /**
  * @param formatter {string} input
@@ -56,11 +61,14 @@ const connect = (options) =>
       resolve(api);
     };
 
-    ssbClient(null, options).then(onSuccess).catch(reject);
+    ssbClient(process.env.OASIS_TEST ? ssbConfig.keys : null, options)
+      .then(onSuccess)
+      .catch(reject);
   });
 
 let closing = false;
 let serverHandle;
+let clientHandle;
 
 /**
  * Attempts connection over Unix socket, falling back to TCP socket if that
@@ -69,7 +77,15 @@ let serverHandle;
  */
 const attemptConnection = () =>
   new Promise((resolve, reject) => {
-    connect({ remote })
+    const originalConnect = process.env.OASIS_TEST
+      ? new Promise((resolve, reject) =>
+          reject({
+            message: "could not connect to sbot",
+          })
+        )
+      : connect({ remote });
+
+    originalConnect
       .then((ssb) => {
         debug("Connected to existing Scuttlebutt service over Unix socket");
         resolve(ssb);
@@ -96,110 +112,73 @@ const attemptConnection = () =>
       });
   });
 
-const ensureConnection = (customConfig) =>
-  new Promise((resolve) => {
-    attemptConnection()
-      .then((ssb) => {
-        resolve(ssb);
-      })
-      .catch(() => {
-        debug("Connection attempts to existing Scuttlebutt services failed");
-        log("Starting Scuttlebutt service");
+let pendingConnection = null;
 
-        // Start with the default SSB-Config object.
-        const server = flotilla(ssbConfig);
-        // Adjust with `customConfig`, which declares further preferences.
-        serverHandle = server(customConfig);
+const ensureConnection = (customConfig) => {
+  if (pendingConnection === null) {
+    pendingConnection = new Promise((resolve) => {
+      attemptConnection()
+        .then((ssb) => {
+          resolve(ssb);
+        })
+        .catch(() => {
+          debug("Connection attempts to existing Scuttlebutt services failed");
+          log("Starting Scuttlebutt service");
 
-        // Give the server a moment to start. This is a race condition. :/
-        setTimeout(() => {
-          attemptConnection()
-            .then((ssb) => {
-              autoStagePeers({ ssb, config: customConfig });
-              resolve(ssb);
-            })
-            .catch((e) => {
-              throw new Error(e);
-            });
-        }, 100);
-      });
-  });
+          // Adjust with `customConfig`, which declares further preferences.
+          serverHandle = flotilla(customConfig);
 
-const autoStagePeers = ({ ssb, config }) => {
-  // TODO: This does not start when Oasis is started in --offline mode, which
-  // is great, but if you start Oasis in --offline mode and select 'Start
-  // networking' then this doesn't come into play.
-  //
-  // The right place to fix this is in the scheduler, and this entire function
-  // should be replaced by: https://github.com/staltz/ssb-conn/pull/17
-  if (config.conn.autostart !== true) {
-    return;
+          // Give the server a moment to start. This is a race condition. :/
+          setTimeout(() => {
+            attemptConnection()
+              .then(resolve)
+              .catch((e) => {
+                throw new Error(e);
+              });
+          }, 100);
+        });
+    });
+
+    const cancel = () => (pendingConnection = null);
+    pendingConnection.then(cancel, cancel);
   }
 
-  const inProgress = {};
-  const maxHops = lodash.get(
-    ssbConfig,
-    "friends.hops",
-    lodash.get(ssbConfig, "friends.hops", 0)
-  );
-
-  const add = (address) => {
-    inProgress[address] = true;
-    return () => {
-      inProgress[address] = false;
-    };
-  };
-
-  ssb.friends.hops().then((hops) => {
-    pull(
-      ssb.conn.stagedPeers(),
-      pull.drain((x) => {
-        x.filter(([address, data]) => {
-          const notInProgress = inProgress[address] !== true;
-
-          const key = data.key;
-          const haveHops = typeof hops[key] === "number";
-          const hopValue = haveHops ? hops[key] : Infinity;
-          // Negative hops means blocked
-          const isNotBlocked = hopValue >= 0;
-          const withinHops = isNotBlocked && hopValue <= maxHops;
-
-          return notInProgress && withinHops;
-        }).forEach(([address, data]) => {
-          const done = add(address);
-          debug(
-            `Connecting to staged peer at ${
-              hops[data.key]
-            }/${maxHops} hops: ${address}`
-          );
-          ssb.conn.connect(address, data).then(done).catch(done);
-        });
-      })
-    );
-  });
+  return pendingConnection;
 };
 
 module.exports = ({ offline }) => {
   if (offline) {
     log("Offline mode activated - not connecting to scuttlebutt peers or pubs");
     log(
-      "WARNING: offline mode cannot control the behavior of pre-existing servers"
+      "WARNING: Oasis can connect to the internet through your other SSB apps if they're running."
     );
   }
 
-  const customConfig = {
-    conn: {
-      autostart: !offline,
-    },
-  };
+  // Make a copy of `ssbConfig` to avoid mutating.
+  const customConfig = JSON.parse(JSON.stringify(ssbConfig));
 
-  let clientHandle;
+  // This is unnecessary when https://github.com/ssbc/ssb-config/pull/72 is merged
+  customConfig.connections.incoming.unix = [
+    { scope: "device", transform: "noauth" },
+  ];
+
+  // Only change the config if `--offline` is true.
+  if (offline === true) {
+    lodash.set(customConfig, "conn.autostart", false);
+  }
+
+  // Use `conn.hops`, or default to `friends.hops`, or default to `0`.
+  lodash.set(
+    customConfig,
+    "conn.hops",
+    lodash.get(ssbConfig, "conn.hops", lodash.get(ssbConfig.friends.hops, 0))
+  );
 
   /**
    * This is "cooler", a tiny interface for opening or reusing an instance of
    * SSB-Client.
    */
-  return {
+  const cooler = {
     open() {
       // This has interesting behavior that may be unexpected.
       //
@@ -215,7 +194,7 @@ module.exports = ({ offline }) => {
           ensureConnection(customConfig).then((ssb) => {
             clientHandle = ssb;
             if (closing) {
-              ssb.close();
+              cooler.close();
               reject(new Error("Closing Oasis"));
             } else {
               resolve(ssb);
@@ -234,4 +213,11 @@ module.exports = ({ offline }) => {
       }
     },
   };
+
+  // Important: This ensures that we have an SSB connection as soon as Oasis
+  // starts. If we don't do this, then we don't even attempt an SSB connection
+  // until we receive our first HTTP request.
+  cooler.open();
+
+  return cooler;
 };

@@ -24,6 +24,9 @@ Please run `npm test` before writing a commit, because if there are errors then
 maintainers won't be able to merge your patch. Please ask for help if `npm test`
 is giving you any trouble.
 
+**Note:** `npm run fix` is run automatically as a pre-commit hook. You always
+have the option to disable pre-commit hooks with `git commit --no-verify`.
+
 ## Frequently Failed Tests
 
 ### Unknown word
@@ -36,7 +39,7 @@ is giving you any trouble.
 
 <!-- spell-checker:enable -->
 
-If this word is a tpo, please fix the typo. If this error is a mistake, and
+If this word is a typo, please fix the typo. If this error is a mistake, and
 you're sure that this is a word, please add the word to `.cspell.json`.
 
 ### Code style issues found
